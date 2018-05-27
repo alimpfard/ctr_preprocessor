@@ -1,0 +1,13 @@
+Generator on: 'linesOf:' do: {:str
+    var chars is Generator elementsOf: str.
+    ^chars fmap: {:char
+        char isNil break.
+        var s is ''.
+        var chars is const chars.
+        {^char containsPattern: ?>(\r)?\n<?.} whileFalse: {
+            s +=: char.
+            char is chars next.
+        }.
+        ^s.
+    }.
+}.

@@ -1,0 +1,30 @@
+Broom memoryLimit: 1024 * 1024 * 1024.
+import 
+    LineIterator
+    Preprocessor
+    CLIUtils: 'parseCliArguments'.
+
+var config is parseCliArguments run.
+(var filenames is config at: 'filenames') isNil ifTrue: {
+    thisBlock error: 'No file names provided'.
+}.
+
+
+(var cf is config at: 'config') isNil ifFalse: {{
+    config is JSON parse: (File new: cf, read).
+} catch: {:e Pen red writeln: '%s :: Expected to find a valid json file at $$cf' % [e], resetColor. Program exit.}, run.}.
+
+var fss is Nil.
+
+filenames each_v: ({:filename 
+    fss is Map new.
+    filename findPattern: ?>^(.*?)\.(.*)$<? do: {:gs
+        fss put: gs @ 0 at: 'F'.
+        fss put: gs @ 1 at: 'f'.
+        fss put: gs @ 2 at: 'e'.
+        fss put: Clock new at: 'd'.
+    }.
+    File new: (config at: 'oformat', %~: fss), write: (
+        preprocessor process: filename config: config
+    ).
+}).# catch: {:e Pen red write: e, resetColor brk. Program exit. }).

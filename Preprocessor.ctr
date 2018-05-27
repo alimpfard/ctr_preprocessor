@@ -1,0 +1,224 @@
+import LineIterator.
+
+var Interpreter is Object cnew: {
+    context => Map new.
+    freshC => 0.
+},
+on: 'new' do: {
+    ^me cnew: {
+        context => Map new.
+        freshC => 0.
+    }.
+},
+on: 'fresh' do: {
+    ^'var%d' % [(my freshC +=: 1)].
+},
+on: 'process:' do: {:self:str
+    var string is False.
+    var escape is False.
+    var block is 0.
+    var result is ''.
+    var case_str is {
+        string is string either: { ^escape either: { result +=: '\\\''. ^True.} or: { result +=: '\''. ^False.}. }  or: { result +=: '\''. ^True.}. 
+    }.
+    var case_oblock is {
+        result +=: '{'.
+        block +=: string not toNumber. 
+    }.
+    var case_cblock is { 
+        result +=: '}'.
+        block -=: string not toNumber. 
+    }.
+    str characters each_v: {:c
+        c case: '\'' do: case_str,
+          case: '"'  do: case_str,
+          case: '{'  do: case_oblock,
+          case: '}'  do: case_cblock,
+          case: '\\' do: {
+              string ifTrue: {
+                  (escape not) either: {
+                    escape is True.
+                  } or: {
+                      result +=: '\\'.
+                      escape is False.
+                  }.
+              }.
+          },
+          default: { result +=: c. },
+          switch.
+    }.
+    var context is my context.
+    (string not) & (block = 0) ifTrue: {
+        result is Reflect run: {:str ^str eval.} inContext: context arguments: [result].
+    }.
+    ^[result, (string either: self expectString or: {
+        ^block > 0 either: self expectBlock or: {
+            ^block = 0 either: self expectToplevel or: self expectBlockError.
+        }.})].
+},
+on: 'evaluate:' do: {:line
+    ^Reflect run: {:str ^str eval.} inContext: my context arguments: [line].
+},
+on: 'run:' do: {:blk
+    ^Reflect run: blk inContext: my context arguments: [].
+},
+on: 'define:' do: {:self:exp
+    exp is exp leftTrim split: ' ' max: 1.
+    evaluate: 'var %s is %s' % exp.
+    ^[exp head, me expectToplevel].
+},
+on: 'expectToplevel'   do: {\Nil},
+on: 'expectExit'       do: {\-1},
+on: 'expectNothing'    do: {\0},
+on: 'expectString'     do: {\1},
+on: 'expectBlock'      do: {\2},
+on: 'expectPrint'      do: {\3},
+on: 'expectBlockError' do: {\4}.
+
+var preprocessor is Object new.
+preprocessor on: 'lines:' do: {:variant
+    var magic is ?>^%s(.*)$<? % [my magic % ['(\\-|\\+)\\s']].
+    var lnum is (my linenumber + variant) min: my linenumber.
+    variant is my rawString reSplit: ?>\r?\n<?, from: lnum lengthMax: variant abs.
+    variant is variant fmap: \:x x findPattern: magic do: \:xs xs last.
+    ^variant join: '\n'.
+}.
+
+preprocessor on: 'process:config:' do: {:fname:config
+    config => config.
+    magic => config at: 'command_format', or: '#%s'.
+    filename => fname.
+    interpreter => const Interpreter new.
+    rawString => File new: fname, read.
+    toProcess => Generator linesOf: my rawString.
+    linenumber => 0.
+    outputBuffer => ''.
+    interpolateAll => config at: 'interp_all', or: False.
+    macros => [['+', False],
+               ['-', False], 
+               ['e', True], 
+               ['d', True], 
+               ['p', True],
+               ['call', True]].
+    ^me process.
+},
+on: 'output:' do: {:val
+    var pad is val @ 1.
+    val is val @ 0.
+    val is (val toBoolean either: pad or: '') + (
+        Reflect isObject: val linkedTo: Array, either: {
+            ^'%:L' % ['\n' + pad, val].
+        } or: { ^val toString. }).
+    my outputBuffer +=: val.
+},
+on: 'nextLineno' do: {
+    ^my linenumber +=: 1.
+},
+on: 'process' do: {:self
+    var magic is my magic.
+    var line is (var toProcess is my toProcess) next.
+    var expect is Nil.
+    var result is Nil.
+    var macros is my macros.
+    var temp is Nil.
+    var Interp is my interpreter.
+    var interpolateAll is my interpolateAll.
+    {^expect = Interp expectExit.} whileFalse: {
+        line ifTrue: {
+            (macros any: \:m (line containsPattern: '^%s\\s+' % [magic % [m head]]) & (m last | interpolateAll) ) ifTrue: {
+                line is line findPattern: ?>\$\#(-?\d+)<? do: {:gs
+                    var num is (gs @ 1) toNumber.
+                    var s is preprocessor lines: num, escapeQuotes.
+                    var f is Interp fresh.
+                    Interp evaluate: ?>var %s is '%s'<? % [f, s].
+                    ^f.
+                }.
+            }.
+        }.
+        expect case: Interp expectToplevel do: {
+            result is self toplevel: line.
+            expect is result last.
+            result is result head.
+        }, case: Interp expectString do: {
+            result is self string: line.
+            expect is result last.
+            result is result head.
+            temp +=: result.
+        }, case: Interp expectBlock do: {
+            result is self block: line.
+            expect is result last.
+            result is result head.
+            temp +=: result.
+        }, case: Interp expectNothing do: {
+            expect is Nil.
+            result is Nil.
+            temp is Nil.
+        }, case: Interp expectPrint do: {
+            expect is Nil.
+            self output: result.
+            result is 'printed'.
+        }, default: {
+            Pen red write: 'what is $$expect ?', resetColor brk.
+            Program exit.
+        }, switch.
+        result isNil ifTrue: {
+            var reg is '^%s' % [magic % ['-\\s+']].
+            line containsPattern: reg, ifFalse: {
+                self output: [line + '\n', ''].
+            }.
+        }.
+        line isNil ifTrue: { expect is Interp expectExit. }.
+        Pen writeln: 'line %d: %s [from %s], next: %s' % [self nextLineno, result, line, expect].
+        line is toProcess next.
+    }.
+    ^my outputBuffer.
+},
+on: 'toplevel:' do: {:self:line
+    var Interp is my interpreter.
+    var result is Nil.
+    var expect is Nil.
+    var magic is my magic.
+    var reg is ?>^(\s*)%s(.+)$<?.
+    line isNil either: {
+        result is ''.
+        expect is Nil.
+    } or: {
+        line findPattern: reg % [magic % ['e\\s+']] do: {:gs #toplevel
+            var inits is gs @ 1.
+            var interpret is gs @ 2.
+            result is Interp process: interpret.
+            expect is result last.
+            result is result head.
+        }.
+        result isNil ifTrue: {
+            line findPattern: reg % [magic % ['p\\s+']] do: {:gs #print
+                var inits is '' + (gs @ 1).
+                var interpret is (gs @ 2) trim or: 'Nil'.
+                result is [(Interp evaluate: interpret), inits].
+                expect is Interp expectPrint.
+            }.
+        }.
+        result isNil ifTrue: {
+            line findPattern: reg % [magic % ['d\\s+']] do: {:gs #define
+                var inits is '' + (gs @ 1).
+                var interpret is '' + (gs @ 2).
+                result is Interp define: interpret.
+                expect is result last.
+                result is result head.
+             }.
+        }.
+        result isNil ifTrue: {
+             line findPattern: reg % [magic % ['call\\s+']] do: {:gs #define
+                 var interpret is '' + (gs @ 2).
+                 [func, *args] is interpret reSplit: '\\s+'.
+                 var msg is args count > 0 either: { ^['applyTo:'] + (['and:'] * (args count - 1)). } or: ['run'].
+                 var exp is '%s %:L' % [func, ' ', (msg imap: \:i:x '%s %s' % [x, args @ i])].
+                 result is Interp evaluate: exp.
+                 expect is Interp expectPrint.
+                 result is [result, gs @ 1].
+              }.
+         }.
+    }.
+    ^[result, expect].
+}.
+import export: preprocessor as: 'preprocessor'.

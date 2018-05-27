@@ -1,0 +1,58 @@
+import Library/Data/SwitchCase.
+
+var argmap is Map cnew: {
+    put: ['pass'] at: 'filenames',
+    put: ['shift'] at: 'command_format',
+    put: ['shift'] at: 'oformat',
+    put: ['shift'] at: 'config',
+    put: ['shift'] at: 'interp_all'.
+}.
+var parseCliArguments is {
+    var argmap is const argmap.
+    var state is Map new.
+    var handleArgument is {:arg
+        (var descriptor is argmap at: arg) isNil ifTrue: {
+            thisBlock error: 'Invalid argument $$arg was provided'.
+        }.
+        var next is descriptor head.
+        next case: 'shift' do: {
+            state put: args next at: arg.
+        }, case: 'pass' do: {
+        }, default: {
+            thisBlock error: '$$next not implemented.'.
+        }, switch.
+        descriptor tail each_v: \:x state put: x last at: x head.
+    }.
+    var handleSingleArg is {:arg
+        state put: True at: arg.
+    }.
+    var arguments is Array new fill: Program argCount with: \:i Program argument: i.
+    [_, _, *arguments] is arguments.
+    var args is Generator elementsOf: arguments.
+    var arg is args next.
+    {^arg isNil.} whileFalse: {
+        (arg startsWith: '-') either: {
+            arg is arg skip: 1.
+            arg startsWith: '-', either: {
+                arg is arg skip: 1.
+                handleArgument applyTo: arg.
+            } or: {
+                #parse character by character
+                arg is arg characters.
+                arg each_v: handleSingleArg.
+            }.
+        }
+        or: {
+            var is_var is False.
+            arg findPattern: ':([\\w]+)=(.*)' do: {:groups
+                state put: groups @ 2 at: groups @ 1.
+                is_var is True.
+            }.
+            is_var not & (state at: arg, isNil) ifTrue: {
+                state put: ((state @ 'filenames') or: [], + [arg]) at: 'filenames'.
+            }.
+        arg is args next.
+        }.
+    }.
+    ^state.
+}.
