@@ -79,7 +79,7 @@ var preprocessor is Object new.
 preprocessor on: 'lines:' do: {:variant
     var magic is ?>^%s(.*)$<? % [my magic % ['(\\-|\\+)\\s']].
     var lnum is (my linenumber + variant) min: my linenumber.
-    variant is my rawString reSplit: ?>\r?\n<?, from: lnum lengthMax: variant abs.
+    variant is (my rawString + '') reSplit: ?>\r?\n<?, from: lnum lengthMax: variant abs.
     variant is variant fmap: \:x x findPattern: magic do: \:xs xs last.
     ^variant join: '\n'.
 }.
