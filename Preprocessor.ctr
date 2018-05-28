@@ -19,15 +19,15 @@ on: 'process:' do: {:self:str
     var block is 0.
     var result is ''.
     var case_str is {
-        string is string either: { ^escape either: { result +=: '\\\''. ^True.} or: { result +=: '\''. ^False.}. }  or: { result +=: '\''. ^True.}. 
+        string is string either: { ^escape either: { result +=: '\\\''. ^True.} or: { result +=: '\''. ^False.}. }  or: { result +=: '\''. ^True.}.
     }.
     var case_oblock is {
         result +=: '{'.
-        block +=: string not toNumber. 
+        block +=: string not toNumber.
     }.
-    var case_cblock is { 
+    var case_cblock is {
         result +=: '}'.
-        block -=: string not toNumber. 
+        block -=: string not toNumber.
     }.
     str characters each_v: {:c
         c case: '\'' do: case_str,
@@ -73,7 +73,8 @@ on: 'expectNothing'    do: {\0},
 on: 'expectString'     do: {\1},
 on: 'expectBlock'      do: {\2},
 on: 'expectPrint'      do: {\3},
-on: 'expectBlockError' do: {\4}.
+on: 'expectBlockError' do: {\4},
+on: 'expectLineskip'   do: {\5}.
 
 var preprocessor is Object new.
 preprocessor on: 'lines:' do: {:variant
@@ -95,10 +96,11 @@ preprocessor on: 'process:config:' do: {:fname:config
     outputBuffer => ''.
     interpolateAll => config at: 'interp_all', or: False.
     macros => [['+', False],
-               ['-', False], 
-               ['e', True], 
-               ['d', True], 
+               ['-', False],
+               ['e', True],
+               ['d', True],
                ['p', True],
+               ['if', True],
                ['call', True]].
     ^me process.
 },
@@ -123,7 +125,10 @@ on: 'process' do: {:self
     var temp is Nil.
     var Interp is my interpreter.
     var interpolateAll is my interpolateAll.
+    var filename is my filename.
+    var linenumber is 0.
     {^expect = Interp expectExit.} whileFalse: {
+      linenumber is self nextLineno.
         line ifTrue: {
             (macros any: \:m (line containsPattern: '^%s\\s+' % [magic % [m head]]) & (m last | interpolateAll) ) ifTrue: {
                 line is line findPattern: ?>\$\#(-?\d+)<? do: {:gs
@@ -132,6 +137,14 @@ on: 'process' do: {:self
                     var f is Interp fresh.
                     Interp evaluate: ?>var %s is '%s'<? % [f, s].
                     ^f.
+                }, findPattern: ?>\$\#(\!\!|\!\-|\!\?)<? do: {:gs
+                    var replacement is Map cnew: {
+                        put: {^'\'' + filename escapeQuotes + '\''.} at: '!?',
+                        put: {^linenumber.} at: '!!',
+                        put: {^'\'' + line escapeQuotes + '\''.} at: '!-'.
+                    }, at: gs @ 1, run.
+                    Pen writeln: replacement.
+                    ^replacement.
                 }.
             }.
         }.
@@ -139,6 +152,10 @@ on: 'process' do: {:self
             result is self toplevel: line.
             expect is result last.
             result is result head.
+        }, case: Interp expectLineskip do: {
+            result is Nil.
+            expect is Nil.
+            line is toProcess next. #Skip a line
         }, case: Interp expectString do: {
             result is self string: line.
             expect is result last.
@@ -161,14 +178,14 @@ on: 'process' do: {:self
             Pen red write: 'what is $$expect ?', resetColor brk.
             Program exit.
         }, switch.
-        result isNil ifTrue: {
+        (result isNil) & (line isNil not) ifTrue: {
             var reg is '^%s' % [magic % ['-\\s+']].
             line containsPattern: reg, ifFalse: {
                 self output: [line + '\n', ''].
             }.
         }.
         line isNil ifTrue: { expect is Interp expectExit. }.
-        Pen writeln: 'line %d: %s [from %s], next: %s' % [self nextLineno, result, line, expect].
+        Pen writeln: 'line %d: %s [from %s], next: %s' % [linenumber, result, line, expect].
         line is toProcess next.
     }.
     ^my outputBuffer.
@@ -208,9 +225,18 @@ on: 'toplevel:' do: {:self:line
              }.
         }.
         result isNil ifTrue: {
+            line findPattern: reg % [magic % ['times\\s+']] do: {:gs #times
+                var inits is '' + (gs @ 1).
+                var interpret is '' + (gs @ 2).
+                result is Interp define: interpret.
+                expect is result last.
+                result is result head.
+            }.
+        }.
+        result isNil ifTrue: {
              line findPattern: reg % [magic % ['call\\s+']] do: {:gs #define
                  var interpret is '' + (gs @ 2).
-                 [func, *args] is interpret reSplit: '\\s+'.
+                 [func, *args] is interpret reSplit: ?>(?!<\')\s+(?!=\')<?.
                  var msg is args count > 0 either: { ^['applyTo:'] + (['and:'] * (args count - 1)). } or: ['run'].
                  var exp is '%s %:L' % [func, ' ', (msg imap: \:i:x '%s %s' % [x, args @ i])].
                  result is Interp evaluate: exp.
@@ -218,6 +244,14 @@ on: 'toplevel:' do: {:self:line
                  result is [result, gs @ 1].
               }.
          }.
+        result isNil ifTrue: {
+            line findPattern: reg % [magic % ['if\\s+']] do: {:gs #skip_if_false
+                var interpret is gs @ 2.
+                result is Interp evaluate: interpret.
+                result toBoolean either: { expect is Interp expectToplevel. }
+                                      or:     { expect is Interp expectLineskip. }.
+            }.
+        }.
     }.
     ^[result, expect].
 }.
