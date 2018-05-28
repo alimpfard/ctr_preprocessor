@@ -16,15 +16,38 @@ var config is parseCliArguments run.
 
 var fss is Nil.
 
-filenames each_v: ({:filename 
-    fss is Map new.
-    filename findPattern: ?>^(.*?)\.(.*)$<? do: {:gs
-        fss put: gs @ 0 at: 'F'.
-        fss put: gs @ 1 at: 'f'.
-        fss put: gs @ 2 at: 'e'.
-        fss put: Clock new at: 'd'.
+var procs is filenames fmap: ({:filename
+    var preprocessor is preprocessor new.
+    ^Program new: ({:par
+        fss is Map new.
+        const filename findPattern: ?>^(.*?)\.(.*)$<? do: {:gs
+            fss put: gs @ 0 at: 'F'.
+            fss put: gs @ 1 at: 'f'.
+            fss put: gs @ 2 at: 'e'.
+            fss put: Clock new at: 'd'.
+        }.
+        File new: (config at: 'oformat', %~: fss), write: (
+            preprocessor process: filename config: config
+        ).
+        par message: 'done'.
+    } catch: {:e 
+        var lineno is Reflect getProperty: 'linenumber' ofObject: preprocessor.
+        par message: [const filename, lineno, e].
+        Program exit. 
+    }).
+}).
+
+var fails is Array new.
+
+procs each_v: {:p
+    var ret is p join.
+    ret = 'done' ifFalse: {
+         ret isNil ifFalse: {
+             fails push: ret.
+         }.
     }.
-    File new: (config at: 'oformat', %~: fss), write: (
-        preprocessor process: filename config: config
-    ).
-}).# catch: {:e Pen red write: e, resetColor brk. Program exit. }).
+}.
+
+fails each_v: \:x ['fname', 'lno', 'err'] letEqual: x eval in : {
+    Pen red writeln: 'Processing of file %s failed at line %d:\n\t%s' % [fname, lno, (err split: '\n', join: '\n\t')], resetColor.
+}.
