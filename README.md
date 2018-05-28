@@ -19,3 +19,49 @@ The configuration can either be supplied by a config file encoded in json, or vi
 
 `--interp_all <True|False>` whether all macros should interpolate their values
 
+### Macros
+
+Currently only a few macros are present:
+* `+ <text>`: Text copied verbatim into the output file, but would allow substitution if interp_all is enabled.
+* `- <text>`: Text __not__ copied into the output file, but still accessible to the substitution system.
+* `e <expr>`: Evaluate citron expression discarding the value.
+* `d <name> <expr>`: Defines a variable 
+* `p <expr>`: Prints the value of an expression into the output. (\*)
+* `call <name> <expr>*`: calls a function with the given values and prints the value in the output (\*)
+
+_\*_ Should the value be an array, it will be expanded with newlines first; 
+These macros respect the indentation they are placed at, and expand to their respective indentation level.
+
+#### example
+
+##### config:
+```json
+{
+    "command_format": "\\#%s",
+    "oformat": "%{f}.out",
+    "interp_all": false
+}
+```
+input file:
+```
+Test
+#- This will not be copied verbatim
+#+ This will, however.
+#d test $#-2
+    #p [test] * 4
+```
+
+output file:
+```
+Test
+ #+ This will, however.
+     This will not be copied verbatim
+ This will, however.
+     This will not be copied verbatim
+ This will, however.
+     This will not be copied verbatim
+ This will, however.
+     This will not be copied verbatim
+ This will, however.
+
+```
