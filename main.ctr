@@ -1,10 +1,11 @@
 Broom memoryLimit: 1024 * 1024 * 1024.
-import 
+import
     LineIterator
     Preprocessor
     CLIUtils: 'parseCliArguments'.
 
 var config is parseCliArguments run.
+Pen writeln: config.
 (var filenames is config at: 'filenames') isNil ifTrue: {
     thisBlock error: 'No file names provided'.
 }.
@@ -30,10 +31,11 @@ var procs is filenames fmap: ({:filename
             preprocessor process: filename config: config
         ).
         par message: 'done'.
-    } catch: {:e 
+    } catch: {:e
+        Pen red writeln: e.
         var lineno is Reflect getProperty: 'linenumber' ofObject: preprocessor.
         par message: [const filename, lineno, e].
-        Program exit. 
+        Program exit.
     }).
 }).
 

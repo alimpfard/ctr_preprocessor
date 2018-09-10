@@ -26,11 +26,12 @@ var parseCliArguments is {
     var handleSingleArg is {:arg
         state put: True at: arg.
     }.
-    var arguments is Array new fill: Program argCount with: \:i Program argument: i.
+    var arguments is Array new fill: Program argCount + 1 with: \:i Program argument: i.
     [_, _, *arguments] is arguments.
     var args is Generator elementsOf: arguments.
     var arg is args next.
     {^arg isNil.} whileFalse: {
+        Pen writeln: arg.
         (arg startsWith: '-') either: {
             arg is arg skip: 1.
             arg startsWith: '-', either: {
@@ -51,8 +52,8 @@ var parseCliArguments is {
             is_var not & (state at: arg, isNil) ifTrue: {
                 state put: ((state @ 'filenames') or: [], + [arg]) at: 'filenames'.
             }.
-        arg is args next.
         }.
+        arg is args next.
     }.
     ^state.
 }.

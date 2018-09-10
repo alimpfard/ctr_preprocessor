@@ -1,4 +1,7 @@
 import LineIterator.
+String on: 'escapeQuotes' do: {
+    ^me ~ ?>s/(\\\\)*(\\)'/$1$2\\\'/g<?.
+}.
 
 var Interpreter is Object cnew: {
     context => Map new.
@@ -79,7 +82,7 @@ on: 'expectLineskip'   do: {\5}.
 var preprocessor is Object new.
 preprocessor on: 'lines:' do: {:variant
     var magic is ?>^%s(.*)$<? % [my magic % ['(\\-|\\+)\\s']].
-    var lnum is (my linenumber + variant) min: my linenumber.
+    var lnum is (my linenumber + variant - 1) min: my linenumber.
     variant is (my rawString + '') reSplit: ?>\r?\n<?, from: lnum lengthMax: variant abs.
     variant is variant fmap: \:x x findPattern: magic do: \:xs xs last.
     ^variant join: '\n'.
